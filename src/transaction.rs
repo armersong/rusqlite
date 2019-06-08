@@ -50,8 +50,8 @@ pub enum DropBehavior {
 ///     tx.commit()
 /// }
 /// ```
-pub struct Transaction<'conn> {
-    conn: &'conn Connection,
+pub struct Transaction {
+    conn: Connection,
     drop_behavior: DropBehavior,
 }
 
@@ -86,13 +86,13 @@ pub struct Savepoint<'conn> {
     committed: bool,
 }
 
-impl<'conn> Transaction<'conn> {
+impl Transaction {
     /// Begin a new transaction. Cannot be nested; see `savepoint` for nested
     /// transactions.
     /// Even though we don't mutate the connection, we take a `&mut Connection`
     /// so as to prevent nested or concurrent transactions on the same
     /// connection.
-    pub fn new(conn: &mut Connection, behavior: TransactionBehavior) -> Result<Transaction<'_>> {
+    pub fn new(conn: Connection, behavior: TransactionBehavior) -> Result<Transaction> {
         let query = match behavior {
             TransactionBehavior::Deferred => "BEGIN DEFERRED",
             TransactionBehavior::Immediate => "BEGIN IMMEDIATE",
@@ -132,12 +132,12 @@ impl<'conn> Transaction<'conn> {
     /// }
     /// ```
     pub fn savepoint(&mut self) -> Result<Savepoint<'_>> {
-        Savepoint::with_depth(self.conn, 1)
+        Savepoint::with_depth(&self.conn, 1)
     }
 
     /// Create a new savepoint with a custom savepoint name. See `savepoint()`.
     pub fn savepoint_with_name<T: Into<String>>(&mut self, name: T) -> Result<Savepoint<'_>> {
-        Savepoint::with_depth_and_name(self.conn, 1, name)
+        Savepoint::with_depth_and_name(&self.conn, 1, name)
     }
 
     /// Get the current setting for what happens to the transaction when it is
@@ -194,16 +194,16 @@ impl<'conn> Transaction<'conn> {
     }
 }
 
-impl<'conn> Deref for Transaction<'conn> {
+impl Deref for Transaction {
     type Target = Connection;
 
     fn deref(&self) -> &Connection {
-        self.conn
+        &self.conn
     }
 }
 
 #[allow(unused_must_use)]
-impl<'conn> Drop for Transaction<'conn> {
+impl Drop for Transaction {
     fn drop(&mut self) {
         self.finish_();
     }
@@ -348,7 +348,7 @@ impl Connection {
     /// # Failure
     ///
     /// Will return `Err` if the underlying SQLite call fails.
-    pub fn transaction(&mut self) -> Result<Transaction<'_>> {
+    pub fn transaction(self) -> Result<Transaction> {
         Transaction::new(self, TransactionBehavior::Deferred)
     }
 
@@ -360,9 +360,9 @@ impl Connection {
     ///
     /// Will return `Err` if the underlying SQLite call fails.
     pub fn transaction_with_behavior(
-        &mut self,
+        self,
         behavior: TransactionBehavior,
-    ) -> Result<Transaction<'_>> {
+    ) -> Result<Transaction> {
         Transaction::new(self, behavior)
     }
 
